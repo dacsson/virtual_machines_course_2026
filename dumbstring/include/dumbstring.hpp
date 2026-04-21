@@ -29,12 +29,10 @@ public:
       : raw_{other.raw_ & PTR_MASK} {
     if (raw_)
       other.raw_ = raw_;
-    else
-      raw_ = UNIQUE_BIT;
   }
 
   DumbString(DumbString &&other) noexcept : raw_{other.raw_} {
-    other.raw_ = UNIQUE_BIT;
+    other.raw_ = 0;
   }
 
   ~DumbString();
@@ -56,7 +54,7 @@ public:
       return *this;
     release_();
     raw_ = other.raw_;
-    other.raw_ = UNIQUE_BIT;
+    other.raw_ = 0;
     return *this;
   }
 
@@ -64,8 +62,7 @@ public:
   DumbString &operator=(std::string_view s);
 
   [[nodiscard]] const char *c_str() const noexcept {
-    char *p = ptr_of(raw_);
-    return p ? p : "";
+    return ptr_of(raw_);
   }
 
   [[nodiscard]] std::string_view view() const noexcept {
@@ -74,7 +71,7 @@ public:
   }
 
   [[nodiscard]] bool unique() const noexcept {
-    return (raw_ & UNIQUE_BIT) != 0;
+    return empty() || (raw_ & UNIQUE_BIT) != 0;
   }
 
   [[nodiscard]] bool empty() const noexcept {
@@ -83,7 +80,14 @@ public:
 
   friend std::strong_ordering operator<=>(const DumbString &a,
                                           const DumbString &b) noexcept {
-    const int c = std::strcmp(a.c_str(), b.c_str());
+    const char *pa = a.c_str(), *pb = b.c_str();
+    if (!pa && !pb)
+      return std::strong_ordering::equal;
+    if (!pa)
+      return std::strong_ordering::less;
+    if (!pb)
+      return std::strong_ordering::greater;
+    const int c = std::strcmp(pa, pb);
     if (c < 0)
       return std::strong_ordering::less;
     if (c > 0)
@@ -93,14 +97,17 @@ public:
 
   friend bool operator==(const DumbString &a,
                           const DumbString &b) noexcept {
-    return std::strcmp(a.c_str(), b.c_str()) == 0;
+    const char *pa = a.c_str(), *pb = b.c_str();
+    if (!pa || !pb)
+      return pa == pb;
+    return std::strcmp(pa, pb) == 0;
   }
 
 private:
   static constexpr std::uintptr_t UNIQUE_BIT = 1u;
   static constexpr std::uintptr_t PTR_MASK = ~UNIQUE_BIT;
 
-  mutable std::uintptr_t raw_ = UNIQUE_BIT;
+  mutable std::uintptr_t raw_ = 0;
 
   static char *ptr_of(std::uintptr_t r) noexcept {
     return reinterpret_cast<char *>(r & PTR_MASK);
@@ -146,14 +153,16 @@ template <> struct std::formatter<ds::DumbString> {
 
   auto format(const ds::DumbString &s, std::format_context &ctx) const {
     const char bit = s.unique() ? 'U' : 'S';
+    const char *p = s.c_str();
+    const char *str = p ? p : "(null)";
     switch (m) {
     case mode::value_only:
-      return std::format_to(ctx.out(), "{}", s.c_str());
+      return std::format_to(ctx.out(), "{}", str);
     case mode::bit_only:
       return std::format_to(ctx.out(), "{}", bit);
     case mode::full:
       break;
     }
-    return std::format_to(ctx.out(), "[{}]\"{}\"", bit, s.c_str());
+    return std::format_to(ctx.out(), "[{}]\"{}\"", bit, str);
   }
 };

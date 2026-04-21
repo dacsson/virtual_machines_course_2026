@@ -1,6 +1,7 @@
 #include "dumbstring.hpp"
 
 #include <cstring>
+#include <print>
 
 namespace ds {
 
@@ -35,14 +36,15 @@ void DumbString::alloc_(const char *s, std::size_t n) {
 }
 
 void DumbString::release_() noexcept {
-  char *p = ptr_of(raw_);
-  if (p && unique()) {
+  if (unique()) {
+    char *p = ptr_of(raw_);
 #ifdef DUMBSTRING_TRACE
-    std::println(stderr, "[dumbstring] free \"{}\"", p);
+    if (p)
+      std::println(stderr, "[dumbstring] free \"{}\"", p);
 #endif
     ::operator delete[](p);
   }
-  raw_ = UNIQUE_BIT;
+  raw_ = 0;
 }
 
 } // namespace ds
