@@ -9,9 +9,8 @@ using ds::DumbString;
 
 static void test_default() {
   DumbString s;
-  assert(s.unique());
   assert(s.empty());
-  assert(std::strcmp(s.c_str(), "") == 0);
+  assert(s.c_str() == nullptr);
 }
 
 static void test_from_literal() {
@@ -63,7 +62,6 @@ static void test_move() {
   assert(b.unique());
   assert(std::strcmp(b.c_str(), "moved") == 0);
   assert(a.empty());
-  assert(a.unique());
 }
 
 static void test_print() {

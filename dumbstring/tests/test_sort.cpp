@@ -1,19 +1,18 @@
 #include "dumbstring.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstring>
 #include <print>
-#include <utility>
 
 using ds::DumbString;
 
 static void bubble_sort(DumbString *a, std::size_t n) {
-  using std::swap;
   for (std::size_t i = 0; i + 1 < n; ++i)
     for (std::size_t j = 0; j + 1 < n - i; ++j)
       if (a[j + 1] < a[j])
-        swap(a[j], a[j + 1]);
+        std::swap(a[j], a[j + 1]);
 }
 
 static void test_sort_all_unique() {
