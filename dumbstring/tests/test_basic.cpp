@@ -9,7 +9,6 @@ using ds::DumbString;
 
 static void test_default() {
   DumbString s;
-  assert(s.unique());
   assert(s.empty());
   assert(s.c_str() == nullptr);
 }
@@ -63,7 +62,6 @@ static void test_move() {
   assert(b.unique());
   assert(std::strcmp(b.c_str(), "moved") == 0);
   assert(a.empty());
-  assert(a.unique());
 }
 
 static void test_print() {

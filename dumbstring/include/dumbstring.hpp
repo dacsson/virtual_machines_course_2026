@@ -27,8 +27,7 @@ public:
 
   DumbString(const DumbString &other) noexcept
       : raw_{other.raw_ & PTR_MASK} {
-    if (raw_)
-      other.raw_ = raw_;
+    other.raw_ = raw_;
   }
 
   DumbString(DumbString &&other) noexcept : raw_{other.raw_} {
@@ -42,8 +41,6 @@ public:
       return *this;
     release_();
     char *p = ptr_of(other.raw_);
-    if (!p)
-      return *this;
     raw_ = reinterpret_cast<std::uintptr_t>(p);
     other.raw_ = raw_;
     return *this;
@@ -61,20 +58,20 @@ public:
   DumbString &operator=(const char *s);
   DumbString &operator=(std::string_view s);
 
-  [[nodiscard]] const char *c_str() const noexcept {
+  const char *c_str() const noexcept {
     return ptr_of(raw_);
   }
 
-  [[nodiscard]] std::string_view view() const noexcept {
+  std::string_view view() const noexcept {
     char *p = ptr_of(raw_);
     return p ? std::string_view(p) : std::string_view{};
   }
 
-  [[nodiscard]] bool unique() const noexcept {
-    return empty() || (raw_ & UNIQUE_BIT) != 0;
+  bool unique() const noexcept {
+    return (raw_ & UNIQUE_BIT) != 0;
   }
 
-  [[nodiscard]] bool empty() const noexcept {
+  bool empty() const noexcept {
     return ptr_of(raw_) == nullptr;
   }
 
@@ -113,9 +110,9 @@ private:
     return reinterpret_cast<char *>(r & PTR_MASK);
   }
 
-  static std::uintptr_t pack(char *p, bool uniq) noexcept {
+  static std::uintptr_t pack(char *p) noexcept {
     auto r = reinterpret_cast<std::uintptr_t>(p);
-    return uniq ? (r | UNIQUE_BIT) : r;
+    return r | UNIQUE_BIT;
   }
 
   void alloc_(const char *s, std::size_t n);

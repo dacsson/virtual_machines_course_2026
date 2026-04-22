@@ -32,7 +32,7 @@ void DumbString::alloc_(const char *s, std::size_t n) {
   char *buf = static_cast<char *>(mem);
   std::memcpy(buf, s, n);
   buf[n] = '\0';
-  raw_ = pack(buf, true);
+  raw_ = pack(buf);
 }
 
 void DumbString::release_() noexcept {
