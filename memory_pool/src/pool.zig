@@ -1,19 +1,10 @@
-//! Poolp Fiction is a simple single-threaded memory pool allocator
 pub const PoolpFictionAllocator = @This();
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
-const Alignment = std.mem.Alignment;
 const posix = std.posix;
+const linux = std.os.linux;
 
-pub const vtable: Allocator.VTable = .{
-    .alloc = alloc,
-    .resize = resize,
-    .remap = remap,
-    .free = free,
-};
-
-pub const Error = Allocator.Error;
+pub const Error = std.mem.Allocator.Error;
 
 const page_size = std.heap.pageSize();
 
@@ -25,6 +16,10 @@ base: [*]u8 = undefined,
 /// goes "downwards" in memory
 free_list: [*]u8 = undefined,
 capacity: usize = 0,
+
+/// We use this in the signal handler to specify error
+var guard_page_start: usize = 0;
+var guard_page_end: usize = 0;
 
 /// Initializes a PoolpFictionAllocator with the requested size
 ///
@@ -43,15 +38,21 @@ pub fn init(requested_size: ?usize) Error!PoolpFictionAllocator {
         0,
     ) catch return Error.OutOfMemory;
 
-    // any access on first page means pool overflow
-    const rc = std.os.linux.mprotect(mem.ptr, page_size, .{ .READ = false, .WRITE = false });
-    if (rc != 0) {
-        std.debug.print("Memory pool hit the guard page, memory overflow, requested size: {}", .{requested_size orelse default_size});
-        return Error.OutOfMemory;
-    }
+    const rc = linux.mprotect(mem.ptr, page_size, .{ .READ = false, .WRITE = false });
+    if (rc != 0) return Error.OutOfMemory;
+
+    guard_page_start = @intFromPtr(mem.ptr);
+    guard_page_end = guard_page_start + page_size;
+
+    const act: posix.Sigaction = .{
+        .handler = .{ .sigaction = &sigsegvHandler },
+        .mask = std.mem.zeroes(std.c.sigset_t),
+        .flags = linux.SA.SIGINFO,
+    };
+    posix.sigaction(linux.SIG.SEGV, &act, null);
 
     return .{
-        .base = mem.ptr + page_size, // usable region starts after the guard page
+        .base = mem.ptr, // guard page in included, so we can detect overflow
         .free_list = mem.ptr + total_size,
         .capacity = total_size,
     };
@@ -59,60 +60,27 @@ pub fn init(requested_size: ?usize) Error!PoolpFictionAllocator {
 
 /// Frees the memory allocated by this allocator by unmapping it
 pub fn destroyPool(self: *PoolpFictionAllocator) void {
-    // base points past the guard page, so unmap from one page before
-    posix.munmap(@alignCast((self.base - page_size)[0..self.capacity]));
+    posix.munmap(@alignCast(self.base[0..self.capacity]));
     self.* = .{};
 }
 
-pub fn allocator(self: *PoolpFictionAllocator) Allocator {
-    return .{
-        .ptr = self,
-        .vtable = &vtable,
-    };
-}
-
-fn alloc(ctx: *anyopaque, len: usize, alignment: Alignment, return_address: usize) ?[*]u8 {
-    _ = return_address;
-
-    const self: *PoolpFictionAllocator = @ptrCast(@alignCast(ctx));
-    const align_val = alignment.toByteUnits();
-
+pub fn bump(self: *PoolpFictionAllocator, comptime T: type) *T {
     const current = @intFromPtr(self.free_list);
-    const base = @intFromPtr(self.base);
-
-    const aligned = std.mem.alignBackward(usize, current - len, align_val);
-    if (aligned < base) {
-        std.debug.print("Memory pool hit the guard page, memory overflow, requested size: {} vs {}", .{ len, current - len });
-        return null;
-    }
-
+    const aligned = std.mem.alignBackward(usize, current - @sizeOf(T), @alignOf(T));
     self.free_list = @ptrFromInt(aligned);
-    return self.free_list;
+    return @ptrFromInt(aligned);
 }
 
-fn resize(ctx: *anyopaque, buf: []u8, alignment: Alignment, new_len: usize, return_address: usize) bool {
-    _ = ctx;
-    _ = buf;
-    _ = alignment;
-    _ = new_len;
-    _ = return_address;
-    return false;
-}
-
-fn remap(context: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, return_address: usize) ?[*]u8 {
-    _ = context;
-    _ = memory;
-    _ = alignment;
-    _ = new_len;
-    _ = return_address;
-    return null;
-}
-
-fn free(ctx: *anyopaque, buf: []u8, alignment: Alignment, return_address: usize) void {
-    _ = ctx;
-    _ = buf;
-    _ = alignment;
-    _ = return_address;
+fn sigsegvHandler(_: linux.SIG, info: *const linux.siginfo_t, _: ?*anyopaque) callconv(.c) void {
+    const fault_addr = @intFromPtr(info.fields.sigfault.addr);
+    if (fault_addr >= guard_page_start and fault_addr < guard_page_end) {
+        const msg = "Memory pool overflow: write hit the guard page\n";
+        std.log.err("{s}", .{msg});
+    } else {
+        const msg = "Segmentation fault in memory pool\n";
+        std.log.err("{s}", .{msg});
+    }
+    std.process.exit(1);
 }
 
 fn alignToPage(len: usize) usize {
