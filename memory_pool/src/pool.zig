@@ -20,6 +20,7 @@ capacity: usize = 0,
 /// We use this in the signal handler to specify error
 var guard_page_start: usize = 0;
 var guard_page_end: usize = 0;
+var old_act: posix.Sigaction = undefined;
 
 /// Initializes a PoolpFictionAllocator with the requested size
 ///
@@ -49,7 +50,7 @@ pub fn init(requested_size: ?usize) Error!PoolpFictionAllocator {
         .mask = std.mem.zeroes(std.c.sigset_t),
         .flags = linux.SA.SIGINFO,
     };
-    posix.sigaction(linux.SIG.SEGV, &act, null);
+    posix.sigaction(linux.SIG.SEGV, &act, &old_act);
 
     return .{
         .base = mem.ptr, // guard page in included, so we can detect overflow
@@ -71,16 +72,18 @@ pub fn bump(self: *PoolpFictionAllocator, comptime T: type) *T {
     return @ptrFromInt(aligned);
 }
 
-fn sigsegvHandler(_: linux.SIG, info: *const linux.siginfo_t, _: ?*anyopaque) callconv(.c) void {
+fn sigsegvHandler(sig: linux.SIG, info: *const linux.siginfo_t, ctx: ?*anyopaque) callconv(.c) void {
     const fault_addr = @intFromPtr(info.fields.sigfault.addr);
     if (fault_addr >= guard_page_start and fault_addr < guard_page_end) {
         const msg = "Memory pool overflow: write hit the guard page\n";
-        std.log.err("{s}", .{msg});
-    } else {
-        const msg = "Segmentation fault in memory pool\n";
-        std.log.err("{s}", .{msg});
+        _ = posix.system.write(2, msg.ptr, msg.len);
+        std.process.exit(1);
     }
-    std.process.exit(1);
+
+    posix.sigaction(linux.SIG.SEGV, &old_act, null);
+    if (old_act.handler.sigaction) |handler| {
+        handler(sig, info, ctx);
+    }
 }
 
 fn alignToPage(len: usize) usize {
