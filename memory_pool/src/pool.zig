@@ -26,9 +26,12 @@ var old_act: posix.Sigaction = undefined;
 ///
 /// Uses `mmap` to allocate memory, which will grow downwards
 /// If `requested_size` is 0, the default size is used
-pub fn init(requested_size: ?usize) Error!PoolpFictionAllocator {
+pub fn init(comptime T: type, requested_size: ?usize) Error!PoolpFictionAllocator {
     const mem_size = alignToPage(requested_size orelse default_size);
-    const total_size = mem_size + page_size; // extra guard page (protected)
+    // guard region must be at least te sizeof some el. type so a
+    // single bump cannot skip over it, like if it was just a page
+    const guard_size = alignToPage(@sizeOf(T));
+    const total_size = mem_size + guard_size;
 
     const mem = posix.mmap(
         null,
@@ -39,11 +42,11 @@ pub fn init(requested_size: ?usize) Error!PoolpFictionAllocator {
         0,
     ) catch return Error.OutOfMemory;
 
-    const rc = linux.mprotect(mem.ptr, page_size, .{ .READ = false, .WRITE = false });
+    const rc = linux.mprotect(mem.ptr, guard_size, .{ .READ = false, .WRITE = false });
     if (rc != 0) return Error.OutOfMemory;
 
     guard_page_start = @intFromPtr(mem.ptr);
-    guard_page_end = guard_page_start + page_size;
+    guard_page_end = guard_page_start + guard_size;
 
     const act: posix.Sigaction = .{
         .handler = .{ .sigaction = &sigsegvHandler },

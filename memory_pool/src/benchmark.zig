@@ -69,7 +69,7 @@ fn createListPool(pool: *PoolpFictionAllocator, n: usize) ?*Node {
 pub fn benchmarkPool(io: std.Io, n: usize, pool_size: usize) !void {
     const start = std.posix.getrusage(std.posix.rusage.SELF);
 
-    var pool = PoolpFictionAllocator.init(pool_size) catch return error.OutOfMemory;
+    var pool = PoolpFictionAllocator.init(Node, pool_size) catch return error.OutOfMemory;
     _ = createListPool(&pool, n);
     pool.destroyPool();
 
