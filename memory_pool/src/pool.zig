@@ -75,11 +75,24 @@ pub fn bump(self: *PoolpFictionAllocator, comptime T: type) *T {
     return @ptrFromInt(aligned);
 }
 
+const SEGV_MAPERR = 1; // address not mapped to object
+const SEGV_ACCERR = 2; // invalid permissions for mapped object
+
+fn writeStr(s: []const u8) void {
+    _ = posix.system.write(2, s.ptr, s.len);
+}
+
 fn sigsegvHandler(sig: linux.SIG, info: *const linux.siginfo_t, ctx: ?*anyopaque) callconv(.c) void {
     const fault_addr = @intFromPtr(info.fields.sigfault.addr);
     if (fault_addr >= guard_page_start and fault_addr < guard_page_end) {
-        const msg = "Memory pool overflow: write hit the guard page\n";
-        _ = posix.system.write(2, msg.ptr, msg.len);
+        const code_str: []const u8 = switch (info.code) {
+            SEGV_MAPERR => "SEGV_MAPERR (address not mapped)",
+            SEGV_ACCERR => "SEGV_ACCERR (invalid permissions)",
+            else => "unknown si_code",
+        };
+        writeStr("Memory pool overflow: write hit the guard page [");
+        writeStr(code_str);
+        writeStr("]\n");
         std.process.exit(1);
     }
 
