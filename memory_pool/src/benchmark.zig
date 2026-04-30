@@ -36,7 +36,7 @@ const Node = struct {
     }
 };
 
-fn createList(allocator: std.mem.Allocator, n: usize) !?*Node {
+fn createListHeap(allocator: std.mem.Allocator, n: usize) !?*Node {
     var list: ?*Node = null;
     for (0..n) |i| {
         const node = try allocator.create(Node);
@@ -55,21 +55,39 @@ fn deleteList(allocator: std.mem.Allocator, list: ?*Node) void {
     }
 }
 
-pub fn benchmarkList(allocator: std.mem.Allocator, io: std.Io, n: usize, pool_size: ?usize) !void {
+fn createListPool(pool: *PoolpFictionAllocator, n: usize) ?*Node {
+    var list: ?*Node = null;
+    for (0..n) |i| {
+        const node = pool.bump(Node);
+        node.* = Node.init(i);
+        node.next = list;
+        list = node;
+    }
+    return list;
+}
+
+pub fn benchmarkPool(io: std.Io, n: usize, pool_size: usize) !void {
     const start = std.posix.getrusage(std.posix.rusage.SELF);
 
-    if (pool_size) |size| {
-        var pool = PoolpFictionAllocator.init(size) catch return error.OutOfMemory;
-        const pool_alloc = pool.allocator();
-        _ = try createList(pool_alloc, n);
-        pool.destroyPool();
-    } else {
-        const list = try createList(allocator, n);
-        deleteList(allocator, list);
-    }
+    var pool = PoolpFictionAllocator.init(Node, pool_size) catch return error.OutOfMemory;
+    _ = createListPool(&pool, n);
+    pool.destroyPool();
 
     const end = std.posix.getrusage(std.posix.rusage.SELF);
+    try printStats(io, start, end, n);
+}
 
+pub fn benchmarkHeap(allocator: std.mem.Allocator, io: std.Io, n: usize) !void {
+    const start = std.posix.getrusage(std.posix.rusage.SELF);
+
+    const list = try createListHeap(allocator, n);
+    deleteList(allocator, list);
+
+    const end = std.posix.getrusage(std.posix.rusage.SELF);
+    try printStats(io, start, end, n);
+}
+
+fn printStats(io: std.Io, start: std.posix.rusage, end: std.posix.rusage, n: usize) !void {
     const time_used = timevalToUsec(timevalDiff(end.utime, start.utime));
     const mem_used: u64 = @intCast((end.maxrss - start.maxrss) * 1024);
     const mem_required: u64 = n * @sizeOf(Node);
