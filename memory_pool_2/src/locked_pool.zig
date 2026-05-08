@@ -24,55 +24,20 @@ slot: usize = 0,
 mutex: Io.Mutex = Io.Mutex.init,
 
 pub fn init(comptime T: type, capacity: usize) std.mem.Allocator.Error!LockedPoolAllocator {
-    const guard_size = alignToPage(@sizeOf(T));
-    const pool_size = alignToPage(guard_size + capacity * @sizeOf(T));
-
-    const mem = posix.mmap(
-        null,
-        pool_size,
-        .{ .READ = true, .WRITE = true },
-        .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
-        -1,
-        0,
-    ) catch |err| {
-        switch (err) {
-            error.MemoryMappingNotSupported => std.debug.panic("MemoryMappingNotSupported: {}", .{err}),
-            error.AccessDenied => std.debug.panic("AccessDenied: {}", .{err}),
-            error.PermissionDenied => std.debug.panic("PermissionDenied: {}", .{err}),
-            else => |e| {
-                return e;
-            },
-        }
-    };
-
-    const rc = linux.mprotect(mem.ptr, guard_size, .{ .READ = false, .WRITE = false });
-    if (rc != 0) return error.OutOfMemory;
-
-    const begin = @intFromPtr(mem.ptr);
-    const end = begin + pool_size;
-    const slot = pool_registry.add(begin, end) orelse return error.OutOfMemory;
-
+    const m = try pool_registry.initPool(T, capacity);
     return .{
-        .base = mem.ptr,
-        .free_list = end,
-        .capacity = pool_size,
-        .slot = slot,
+        .base = m.base,
+        .free_list = @ptrFromInt(m.end),
+        .capacity = m.capacity,
+        .slot = m.slot,
     };
 }
 
 pub fn bump(self: *LockedPoolAllocator, comptime T: type, io: Io) *T {
     self.mutex.lockUncancelable(io);
     defer self.mutex.unlock(io);
-    self.free_list -= @sizeOf(T);
-    return @ptrFromInt(self.free_list);
-}
-
-pub fn destroy(self: *LockedPoolAllocator) void {
-    pool_registry.remove(self.slot);
-    posix.munmap(@alignCast(self.base[0..self.capacity]));
-    self.* = .{};
-}
-
-fn alignToPage(len: usize) usize {
-    return (len + page_size - 1) / page_size * page_size;
+    const current = @intFromPtr(self.free_list);
+    const new_ptr = current - @sizeOf(T);
+    self.free_list = @ptrFromInt(new_ptr);
+    return @ptrFromInt(new_ptr);
 }
