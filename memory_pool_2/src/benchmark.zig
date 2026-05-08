@@ -8,6 +8,7 @@
 ///   - LockFreePoolAllocator          - one shared pool, atomic bump
 ///   - PoolpFictionAllocator (local)  - from ../memory_pool/src/pool.zig
 const std = @import("std");
+const pool_registry = @import("pool_registry.zig");
 const Io = std.Io;
 const PoolpFictionAllocator = @import("pool.zig");
 const LockedPoolAllocator = @import("locked_pool.zig");
@@ -78,7 +79,7 @@ pub fn benchmarkLockedPool(io: Io) !void {
         t.*.join();
     }
 
-    pool.destroy();
+    pool_registry.destroyPool(&pool);
 
     const end = std.posix.getrusage(std.posix.rusage.SELF);
     try printStats(io, start, end, nodes_num * threads_num);
@@ -107,7 +108,7 @@ pub fn benchmarkLockFreePool(io: Io) !void {
         t.*.join();
     }
 
-    pool.destroy();
+    pool_registry.destroyPool(&pool);
 
     const end = std.posix.getrusage(std.posix.rusage.SELF);
     try printStats(io, start, end, nodes_num * threads_num);
@@ -119,7 +120,7 @@ pub fn benchmarkLockFreePool(io: Io) !void {
 fn localPoolThread(n: usize) void {
     var pool = PoolpFictionAllocator.init(Node, n * @sizeOf(Node)) catch
         @panic("local pool: init failed");
-    defer pool.destroyPool();
+    defer pool_registry.destroyPool(&pool);
 
     var list: ?*Node = null;
     for (0..n) |i| {
@@ -149,7 +150,7 @@ pub fn benchmarkOverflow(_: Io) void {
     const page_size = std.heap.pageSize();
     var pool = PoolpFictionAllocator.init(Node, page_size) catch
         @panic("overflow test: pool init failed");
-    defer pool.destroyPool();
+    defer pool_registry.destroyPool(&pool);
 
     var list: ?*Node = null;
     for (0..nodes_num) |i| {
