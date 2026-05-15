@@ -109,6 +109,12 @@ unsafe fn store_handler_in_ucontext(cx: *mut libc::c_void, handler: &Handler) {
     cx.uc_mcontext.gregs[libc::REG_RDX as usize] = 0;
 }
 
+/// Check for canonical adress on x86_64
+fn is_non_canonical(addr: usize) -> bool {
+    let canonical = ((addr as i64) << 16 >> 16) as usize;
+    canonical != addr
+}
+
 /// Signal handler for SIGSEGV and SIGBUS
 unsafe extern "C" fn signal_handler(
     signum: libc::c_int,
@@ -128,7 +134,11 @@ unsafe extern "C" fn signal_handler(
     };
 
     unsafe {
-        if faulting_addr == SAVED_ADDR {
+        let is_our_fault = faulting_addr == SAVED_ADDR
+            || ((*(&raw const BYTE_READ_HANDLER)).is_some()
+                && (*(&raw const SAVED_ADDR)).is_some_and(is_non_canonical));
+
+        if is_our_fault {
             let Some(ref handler) = BYTE_READ_HANDLER else {
                 let msg = b"Something is wrong with signal handler\0".as_ptr();
                 libc::write(
@@ -323,5 +333,13 @@ mod tests {
             count, 1,
             "Should attempt to delegate to external handler once"
         );
+    }
+
+    #[test]
+    fn test_non_canonical() {
+        unsafe { init() }
+        let pointer = 0x0F00FFFF0000FFFF as *const u8;
+        let byte = unsafe { read_u8(pointer) };
+        assert!(byte.is_none());
     }
 }
