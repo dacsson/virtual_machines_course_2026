@@ -12,19 +12,16 @@ pub fn memcpy(noalias dest: []u8, noalias src: []const u8, workers: usize, group
 
     errdefer group.cancel(io);
 
-    const chunk_size = src.len / workers;
+    const total_threads = workers + 1;
+    const chunk_size = src.len / total_threads;
 
     for (0..workers) |i| {
         const offset = i * chunk_size;
         try group.concurrent(io, memcpyWorker, .{ dest[offset .. offset + chunk_size], src[offset .. offset + chunk_size] });
     }
 
-    // Copy remaining bytes
-    const remaining = src.len % chunk_size;
-    if (remaining > 0) {
-        const offset = workers * chunk_size;
-        @memcpy(dest[offset .. offset + remaining], src[offset .. offset + remaining]);
-    }
+    const main_offset = workers * chunk_size;
+    @memcpy(dest[main_offset..], src[main_offset..]);
 
     try group.await(io);
 
