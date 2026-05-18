@@ -5,12 +5,12 @@ Parallel memcpy implementation
 ## Benchmarks
 
 ```
-Standard memcpy (workers = 0): Time used: 36217459 ns
-Parallel memcpy (workers = 0): Time used: 34382739 ns
-Parallel memcpy (workers = 2): Time used: 30781474 ns
-Parallel memcpy (workers = 4): Time used: 28162138 ns
-Parallel memcpy (workers = 6): Time used: 30671939 ns
-Parallel memcpy (workers = 8): Time used: 27274700 ns
+Standard memcpy (workers = 0): Time used: 30155529 ns
+Parallel memcpy (workers = 0): Time used: 29976624 ns
+Parallel memcpy (workers = 2): Time used: 29397592 ns
+Parallel memcpy (workers = 4): Time used: 28283406 ns
+Parallel memcpy (workers = 6): Time used: 25986810 ns
+Parallel memcpy (workers = 8): Time used: 25481753 ns
 ```
 
 ## Test
